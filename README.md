@@ -3,7 +3,7 @@ Make Bookings - WIP
 
 TODO:
 
-# cr-appointments
+# cr-bookings
 
 **Status:** UNFINISHED (Currently not maintained due to a lack of time and motivation)
 
@@ -52,7 +52,7 @@ Some parts of the UI and backend logic are functional, but full appointment mana
 While unfinished, you can still install and explore the existing functionality:
 1. Clone the repository into your FiveM resources folder.
 2. Ensure `oxmysql` is installed and configured.
-3. Add `ensure cr-appointments` to your `server.cfg`.
+3. Add `ensure cr-bookings` to your `server.cfg`.
 4. Use `/bookings` in-game to access the UI (if implemented in your version).
 
 ## Future Plans (If Development Resumes)
