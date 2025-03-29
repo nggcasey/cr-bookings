@@ -43,7 +43,7 @@ Some parts of the UI and backend logic are functional, but full appointment mana
 
 ## TODO:
 
-1. ADD SERVER SIDE CHECKS - Conflicts, rate limiting, queuing bookings, security
+1. ADD SERVER SIDE CHECKS - Bookings - Conflicts, rate limiting, queuing bookings, security
 2. Expired availability auto-deletion from database (not implemented)
 3. Heaps of other shit I can't even remember now.
 
