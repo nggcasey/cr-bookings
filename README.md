@@ -1,8 +1,3 @@
-Availability Logic - Done
-Make Bookings - WIP
-
-TODO:
-
 # cr-bookings
 
 **Status:** UNFINISHED (Currently not maintained due to a lack of time and motivation)
@@ -12,7 +7,7 @@ This is unfinished work that I don't have the time to finish. There is some basi
 Some parts of the UI and backend logic are functional, but full appointment management and conflict resolution are incomplete.
 
 ## About
-`cr-appointments` is a FiveM resource designed for a Qbox-based server, allowing players to book appointments with businesses. Businesses can set availability, and players can view available slots and make bookings through ox_lib menus.
+`cr-bookings` is a FiveM resource designed for a Qbox-based server, allowing players to book appointments with businesses. Businesses can set availability, and players can view available slots and make bookings through ox_lib menus.
 
 ## Screenshots
 
