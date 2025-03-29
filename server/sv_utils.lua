@@ -66,6 +66,44 @@ function CheckAvailabilityIssues(staff_cid, business_id, start, end_time, exclud
     return nil, nil -- No conflicts or overlaps
 end
 
+--- Checks for conflicting appointments for a staff member across all businesses
+---@param staff_cid string Citizen ID of the staff member
+---@param start_time number Unix timestamp for appointment start
+---@param end_time number Unix timestamp for appointment end
+---@param buffer number|nil Additional buffer time in minutes (optional, defaults to 0)
+---@return boolean true if a conflict exists, false if the slot is free
+---@return number|nil conflictId ID of the conflicting appointment, nil if none
+function CheckBookingConflicts(staff_cid, start_time, end_time, buffer)
+    buffer = buffer or 0
+    local buffered_end_time = end_time + (buffer * 60)
+
+    local sql = [[
+        SELECT id, business_id FROM cr_bookings
+        WHERE staff_cid = ?
+          AND entry_type = 'appointment'
+          AND (
+            (start_time < ? AND end_time > ?) OR
+            (start_time < ? AND end_time > ?) OR
+            (start_time >= ? AND end_time <= ?)
+          )
+        LIMIT 1
+    ]]
+
+    local params = {
+        staff_cid,
+        buffered_end_time, start_time,    -- Overlap: existing starts before new ends and ends after new starts
+        buffered_end_time, buffered_end_time, -- Overlap: existing starts before new ends
+        start_time, buffered_end_time     -- Overlap: existing is contained within new slot
+    }
+
+    local results = MySQL.query.await(sql, params)
+    if results and #results > 0 then
+        return true, results[1].id
+    end
+
+    return false, nil
+end
+
 --- Convert a "DD/MM/YYYY" string into midnight Unix timestamps for that day
 function GetDayBoundaries(dateStr)
     if Config.DebugMode then

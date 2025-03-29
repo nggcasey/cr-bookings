@@ -316,8 +316,8 @@ lib.callback.register('cr-bookings:server:getAvailableStartTimes', function(sour
     return results
 end)
 
---TODO: Add server side checks
---Checks: Conflicting appointments, rate limiting, queuing bookings, some security shit
+--TODO: Review server side checks
+--Checks: Security & stablility - Rate limiting? Queuing bookings?
 lib.callback.register('cr-bookings:server:bookAppointment', function(source, dayTimestamp, appointmentType, businessKey, staffId, formattedTime, bookingNotes)
     if not dayTimestamp or not businessKey or not appointmentType or not formattedTime or not staffId then
         print('[ERROR] Missing required parameters in bookAppointment')
@@ -325,46 +325,78 @@ lib.callback.register('cr-bookings:server:bookAppointment', function(source, day
     end
 
     local duration = appointmentType.duration or 0
-
-    -- Get Player's Citizen ID from `source`
+    local buffer = appointmentType.buffer or 0
     local player = exports.qbx_core:GetPlayer(source)
-    if not player then
-        print("[ERROR] Failed to get player details for source:", source)
+    if not player then return false end
+
+    local citizenId = player.PlayerData.citizenid
+    local startTimeQuery = MySQL.query.await("SELECT UNIX_TIMESTAMP(CONCAT(DATE(FROM_UNIXTIME(?)), ' ', ?)) AS start_time", { dayTimestamp, formattedTime })
+    if not startTimeQuery[1] then return false end
+
+    local startTime = startTimeQuery[1].start_time
+    local endTime = startTime + (duration * 60) -- Base end time without buffer
+    local bufferedEndTime = endTime + (buffer * 60) -- Full end time with buffer
+
+    if Config.DebugMode then
+        print('[DEBUG] Booking Attempt: staffId=' .. staffId .. ', startTime=' .. startTime .. ' (' .. os.date('%H:%M', startTime) .. '), endTime=' .. bufferedEndTime .. ' (' .. os.date('%H:%M', bufferedEndTime) .. '), duration=' .. duration .. ', buffer=' .. buffer)
+    end
+
+    -- Check for booking conflicts across all businesses
+    local hasConflict, conflictId = CheckBookingConflicts(staffId, startTime, endTime, buffer)
+    if hasConflict then
+        TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = 'Staff is already booked elsewhere during this time. Conflict ID: ' .. tostring(conflictId)
+        })
         return false
     end
-    local citizenId = player.PlayerData.citizenid  -- This is now our `booked_by`
 
-    -- Convert formatted time to UNIX timestamp
-    local startTimestampQuery = [[
-        SELECT UNIX_TIMESTAMP(CONCAT(DATE(FROM_UNIXTIME(?)), ' ', ?)) AS start_time
+    -- Check if within staff availability for this business
+    local avIssueType, avConflictId = CheckAvailabilityIssues(staffId, businessKey, startTime, bufferedEndTime, nil, "availability")
+    if not avIssueType then
+        TriggerClientEvent('ox_lib:notify', source, { type = 'error', description = 'Staff is not available at this business during this time.' })
+        return false
+    end
+
+    -- Ensure the appointment end time doesn’t exceed availability end time
+    local availabilityQuery = [[
+        SELECT end_time FROM cr_bookings
+        WHERE staff_cid = ? AND business_id = ? AND entry_type = 'availability'
+          AND start_time <= ? AND end_time >= ?
+        LIMIT 1
     ]]
-    local startTimeResult = MySQL.query.await(startTimestampQuery, { dayTimestamp, formattedTime })
-    if not startTimeResult or #startTimeResult == 0 then
-        print("[ERROR] Failed to convert formatted time to UNIX timestamp")
+    local availability = MySQL.query.await(availabilityQuery, { staffId, businessKey, startTime, startTime })
+    if not availability or #availability == 0 then
+        TriggerClientEvent('ox_lib:notify', source, { type = 'error', description = 'No matching availability found for this start time.' })
         return false
     end
 
-    local startTime = startTimeResult[1].start_time
-    local endTime = startTime + (duration * 60)
+    local availabilityEndTime = availability[1].end_time
+    if bufferedEndTime > availabilityEndTime then
+        if Config.DebugMode then
+            print('[DEBUG] Appointment rejected: bufferedEndTime=' .. bufferedEndTime .. ' (' .. os.date('%H:%M', bufferedEndTime) .. ') exceeds availabilityEndTime=' .. availabilityEndTime .. ' (' .. os.date('%H:%M', availabilityEndTime) .. ')')
+        end
+        TriggerClientEvent('ox_lib:notify', source, {
+            type = 'error',
+            description = 'Appointment duration exceeds staff availability (ends at ' .. os.date('%H:%M', availabilityEndTime) .. ').'
+        })
+        return false
+    end
 
-    --TODO: ADD SERVER SIDE CHECKS - Conflicts, rate limiting, queuing bookings, security
-
-    -- Insert appointment into the database
-    local query = [[
+    -- Insert appointment
+    local insertQuery = [[
         INSERT INTO cr_bookings (business_id, staff_cid, booked_by, entry_type, start_time, end_time, notes)
         VALUES (?, ?, ?, 'appointment', ?, ?, ?)
     ]]
-    local params = { businessKey, staffId, citizenId, startTime, endTime, bookingNotes }
-
-    local result = MySQL.insert.await(query, params)
+    local result = MySQL.insert.await(insertQuery, { businessKey, staffId, citizenId, startTime, bufferedEndTime, bookingNotes })
     if result then
+        TriggerClientEvent('ox_lib:notify', source, { type = 'success', description = 'Your appointment has been booked!' })
         return true
     else
         print("[ERROR] Failed to insert appointment into database")
         return false
     end
 end)
-
 
 ------------------
 --EVENTS
